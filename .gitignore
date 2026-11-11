@@ -40,3 +40,6 @@ backend/knowledge/samples/
 
 # Temporary OCR test samples (medical data, never commit)
 backend/.tmp_ocr_samples/
+
+# Copyright registration materials (private, never commit)
+copyright_materials/

@@ -222,7 +222,7 @@ evidence = [
 ```
 
 - 存进 `AgentResult.evidence` + `AgentTrace.output_data`；
-- 前端展示「依据：…」，答辩可讲「每条建议可溯源到指南/图谱」；
+- 前端展示「依据：…」，可讲「每条建议可溯源到指南/图谱」；
 - 诊断 Agent 的输出必须带 evidence，且强制免责声明。
 
 ## 10. 与现有代码的映射

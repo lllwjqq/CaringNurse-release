@@ -25,21 +25,15 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: int) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    return jwt.encode(
-        {"sub": str(user_id), "exp": expire, "type": "access"},
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-    )
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    claims = {"sub": str(user_id), "exp": deadline, "type": "access"}
+    return jwt.encode(claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 def create_refresh_token(user_id: int) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
-    return jwt.encode(
-        {"sub": str(user_id), "exp": expire, "type": "refresh"},
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-    )
+    deadline = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    claims = {"sub": str(user_id), "exp": deadline, "type": "refresh"}
+    return jwt.encode(claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 async def get_current_user(
@@ -50,14 +44,14 @@ async def get_current_user(
     if await redis_client.is_token_blacklisted(token):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token已失效")
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        user_id = int(payload["sub"])
-        if payload.get("type") != "access":
+        claims = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        account_id = int(claims["sub"])
+        if claims.get("type") != "access":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效令牌")
     except (JWTError, ValueError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="认证失败")
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user or not user.is_active:
+    rows = await db.execute(select(User).where(User.id == account_id))
+    account = rows.scalar_one_or_none()
+    if not account or not account.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在或已禁用")
-    return user
+    return account

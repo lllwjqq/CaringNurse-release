@@ -52,12 +52,21 @@ class RAGService:
     def _vector_literal(values: list[float]) -> str:
         return "[" + ",".join(f"{v:.8f}" for v in values) + "]"
 
+    @staticmethod
+    def _hit(row) -> dict:
+        return {
+            "source": row.source,
+            "title": row.title,
+            "content": row.content,
+            "score": float(row.score),
+        }
+
     async def seed_knowledge(self):
         result = await self.db.execute(select(KnowledgeChunk).limit(1))
         if result.scalar_one_or_none():
             return
         for item in SEED_KNOWLEDGE:
-            embedding = await llm_service.embed(item["content"])
+            vector = await llm_service.embed(item["content"])
             chunk = KnowledgeChunk(
                 source=item["source"],
                 disease=item["disease"],
@@ -66,7 +75,7 @@ class RAGService:
                 metadata_={"title": item["title"]},
             )
             if hasattr(KnowledgeChunk, "embedding"):
-                chunk.embedding = embedding  # type: ignore
+                chunk.embedding = vector  # type: ignore
             self.db.add(chunk)
         await self.db.flush()
 
@@ -79,7 +88,7 @@ class RAGService:
     ) -> list[dict]:
         await self.seed_knowledge()
         if not force_keyword:
-            query_emb = await llm_service.embed(query)
+            query_vector = await llm_service.embed(query)
             try:
                 async with self.db.begin_nested():
                     sql = """
@@ -88,7 +97,7 @@ class RAGService:
                         FROM knowledge_chunks
                         WHERE embedding IS NOT NULL
                     """
-                    params: dict = {"embedding": self._vector_literal(query_emb)}
+                    params: dict = {"embedding": self._vector_literal(query_vector)}
                     if disease:
                         sql += " AND (disease = :disease OR disease = 'general')"
                         params["disease"] = disease
@@ -97,10 +106,7 @@ class RAGService:
                     result = await self.db.execute(text(sql), params)
                     rows = result.fetchall()
                     if rows:
-                        return [
-                            {"source": r.source, "title": r.title, "content": r.content, "score": float(r.score)}
-                            for r in rows
-                        ]
+                        return [self._hit(row) for row in rows]
             except Exception:
                 pass
 
@@ -111,17 +117,22 @@ class RAGService:
     ) -> list[dict]:
         """关键词降级检索（确定性，供评估脚本与无向量环境复用）。"""
         result = await self.db.execute(select(KnowledgeChunk))
-        chunks = result.scalars().all()
-        scored = []
-        for c in chunks:
-            if disease and c.disease not in (disease, "general"):
+        records = result.scalars().all()
+        ranked = []
+        for chunk in records:
+            if disease and chunk.disease not in (disease, "general"):
                 continue
-            score = sum(1 for w in query if w in c.content)
-            scored.append((score, c))
-        scored.sort(key=lambda x: x[0], reverse=True)
+            overlap = sum(1 for w in query if w in chunk.content)
+            ranked.append((overlap, chunk))
+        ranked.sort(key=lambda x: x[0], reverse=True)
         return [
-            {"source": c.source, "title": c.title, "content": c.content, "score": s}
-            for s, c in scored[:top_k]
+            {
+                "source": chunk.source,
+                "title": chunk.title,
+                "content": chunk.content,
+                "score": score,
+            }
+            for score, chunk in ranked[:top_k]
         ]
 
     def format_context(self, chunks: list[dict]) -> str:

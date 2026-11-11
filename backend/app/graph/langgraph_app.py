@@ -1,4 +1,4 @@
-"""LangGraph 图定义（仅用于展示 / 答辩）。
+"""LangGraph 图定义（仅用于图定义与展示）。
 
 运行时唯一入口是 app.graph.orchestrator.handle_message / handle_stream。
 本文件不再被 API 调用；按规格 §15，不把 db / patient 放进 state。

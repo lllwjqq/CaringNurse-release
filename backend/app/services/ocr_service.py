@@ -34,10 +34,12 @@ class OCRService:
 
     def _get_engine(self):
         global _engine
-        if _engine is None:
-            with _lock:
-                if _engine is None:
-                    _engine = self._init_engine()
+        if _engine is not None:
+            return _engine
+        with _lock:
+            if _engine is None:
+                loaded = self._init_engine()
+                _engine = loaded
         return _engine
 
     def _init_engine(self):
@@ -65,8 +67,8 @@ class OCRService:
                 errors=[],
             )
 
-        engine = self._get_engine()
-        if engine is None:
+        ocr = self._get_engine()
+        if ocr is None:
             return OCRResult(
                 engine=self.engine_name,
                 empty=True,
@@ -74,7 +76,7 @@ class OCRService:
             )
 
         try:
-            images = self._to_images(content, filename)
+            images = self._render_pages(content, filename)
         except Exception as exc:  # noqa: BLE001
             return OCRResult(
                 engine=self.engine_name,
@@ -92,7 +94,7 @@ class OCRService:
         pages: list[str] = []
         scores: list[float] = []
         for image in images:
-            text, score = await loop.run_in_executor(None, self._ocr_one, engine, image)
+            text, score = await loop.run_in_executor(None, self._ocr_one, ocr, image)
             pages.append(text)
             if score is not None:
                 scores.append(score)
@@ -133,34 +135,34 @@ class OCRService:
         score = sum(scores) / len(scores) if scores else None
         return text, score
 
-    def _to_images(self, content: bytes, filename: str) -> list[bytes]:
+    def _render_pages(self, content: bytes, filename: str) -> list[bytes]:
         """图片直接返回；PDF 用 pypdfium2 逐页转 PNG。"""
         if not filename.lower().endswith(".pdf"):
             return [content]
         try:
-            import pypdfium2 as pdfium
+            import pypdfium2 as pdfium_reader
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError("pypdfium2_unavailable") from exc
 
-        images: list[bytes] = []
-        pdf = pdfium.PdfDocument(content)
+        png_pages: list[bytes] = []
+        document = pdfium_reader.PdfDocument(content)
         try:
-            for i in range(len(pdf)):
-                page = pdf[i]
+            for page_number in range(len(document)):
+                page = document[page_number]
                 try:
-                    bitmap = page.render(scale=2.0)
+                    rendered = page.render(scale=2.0)
                     try:
-                        image = bitmap.to_pil()
-                        buffer = io.BytesIO()
-                        image.save(buffer, format="PNG")
-                        images.append(buffer.getvalue())
+                        pil_image = rendered.to_pil()
+                        stream = io.BytesIO()
+                        pil_image.save(stream, format="PNG")
+                        png_pages.append(stream.getvalue())
                     finally:
-                        bitmap.close()
+                        rendered.close()
                 finally:
                     page.close()
         finally:
-            pdf.close()
-        return images
+            document.close()
+        return png_pages
 
 
 def _mock_text(filename: str = "") -> str:

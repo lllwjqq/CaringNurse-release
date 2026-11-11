@@ -95,7 +95,7 @@
 
 - **唯一运行时入口**：`orchestrator.py` 的 `handle_message()` / `handle_stream()`；
 - **Agent 函数**：全部保留/新增在 `orchestrator.py`（共享同一套 `AgentContext`、`log_trace`）；
-- `langgraph_app.py`：降级为「图定义与可视化」，可保留供答辩，**不得再被 API 调用**，只 import 共享 agent 函数、不重复实现；
+- `langgraph_app.py`：降级为「图定义与可视化」，可保留用于图定义与展示，**不得再被 API 调用**，只 import 共享 agent 函数、不重复实现；
 - `streaming.py`：**删除**，逻辑并入 `handle_stream()`；
 - 旧 `run_agent_graph`：**删除**。
 
@@ -660,7 +660,7 @@ class MedicationLog(Base):
 }
 ```
 
-前端 `AgentTrace` 组件可选展示（当前前端 spec 说不渲染，保持不变；数据供后端排查与答辩）。
+前端 `AgentTrace` 组件可选展示（当前前端 spec 说不渲染，保持不变；数据供后端排查）。
 
 ---
 
